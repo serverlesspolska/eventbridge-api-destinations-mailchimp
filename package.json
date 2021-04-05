@@ -1,0 +1,18 @@
+{
+  "name": "eb-api-dest-sample",
+  "version": "1.0.0",
+  "description": "Sample project to demonstrate how to use Event Bridge API Destinations to integrate with Mailchimp",
+  "scripts": {
+    "eslint": "node_modules/.bin/eslint src/**/*.js --ignore-pattern node_modules/"
+  },
+  "author": "Pawel Zubkiewicz",
+  "license": "MIT",
+  "devDependencies": {
+    "aws-sdk": "^2.879.0",
+    "eslint": "^7.23.0",
+    "eslint-config-airbnb-base": "^14.2.1",
+    "eslint-plugin-import": "^2.22.1",
+    "serverless": "^2.33.1"
+  },
+  "dependencies": {}
+}

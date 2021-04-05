@@ -1,0 +1,226 @@
+service: eb-api-dest-sample
+
+configValidationMode: error
+disabledDeprecations:
+  - 'PROVIDER_IAM_SETTINGS'
+
+provider:
+  name: aws
+  stage: ${opt:stage, 'dev'}
+  runtime: nodejs12.x
+  profile: ${self:custom.deployment.myProfile.${self:provider.stage}}
+  region: ${self:custom.deployment.myRegion.${self:provider.stage}}
+  iamRoleStatements:
+  - Sid: EventBridgeWrite
+    Effect: Allow
+    Action:
+      - events:PutEvents
+    Resource: 
+      - !GetAtt EventBus.Arn
+  logRetentionInDays: 60
+  lambdaHashingVersion: 20201221
+  environment:
+    stage: ${self:provider.stage}
+    region: ${self:provider.region}
+  tags:
+    Application: ${self:service}
+    Customer: ${self:service}-${self:provider.stage}
+    Stage: ${self:provider.stage}
+  stackTags:
+    ServerlessFramework: 'true'
+
+custom:
+  deployment: ${file(config/deployment.yml):deployment}
+  mailchimp:
+    endpoint: https://us3.api.mailchimp.com/3.0 # Your Mailchimp URL
+    list: 1234567890 # Your Mailchimp List ID
+  webhook:
+    endpoint: <REPLACE_ME_WITH_REAL_WEBHOOK_SITE_URL> # Your Webhook URL
+
+functions:
+  sendOrderEvent:
+    handler: src/sendOrderEvent/function.handler
+    description: Send sample event
+    memorySize: 256
+    timeout: 2
+    environment:
+      eventBusName: !GetAtt EventBus.Name
+      mcTagServerless: firstTag
+      mcTagDataLake: secondTag
+
+package:
+  patterns:
+    - src/**
+    - '!config/**'
+    - '!*'
+
+resources:
+  Description: Event Bridge API Destinations sample application
+  Resources:
+    EventBus:
+      Type: AWS::Events::EventBus
+      Properties:
+        Name: ${self:service}-${self:provider.stage}
+
+    TestConnection:
+      Type: AWS::Events::Connection
+      Properties:
+        Name: MyWebhookConnection-${self:provider.stage}
+        AuthorizationType: BASIC
+        AuthParameters:
+          BasicAuthParameters:
+              Username: "randomUser"
+              Password: "MailchimpApiPassword"
+          InvocationHttpParameters:
+            HeaderParameters:
+              - Key: MyHeader
+                Value: MyValue
+
+    TestApiDestination:
+      Type: AWS::Events::ApiDestination
+      Properties:
+        Name: webhook-target-${self:provider.stage}
+        ConnectionArn: !GetAtt TestConnection.Arn
+        InvocationEndpoint: ${self:custom.webhook.endpoint}/lists/${self:custom.mailchimp.list}/segments/*/members
+        HttpMethod: POST
+        InvocationRateLimitPerSecond: 20
+    
+    MailchimpConnection:
+      Type: AWS::Events::Connection
+      Properties:
+        Name: MailchimpConnection-${self:provider.stage}
+        AuthorizationType: BASIC
+        AuthParameters:
+            BasicAuthParameters:
+                Username: "randomUser"
+                Password: "Mailchimp API Key" # You can refer secret defined in SSM: ${ssm:mailchimp-api-key~true}
+
+    MailchimpApiDestination:
+      Type: AWS::Events::ApiDestination
+      Properties:
+        Name: mailchimp-tag-${self:provider.stage}
+        ConnectionArn: !GetAtt MailchimpConnection.Arn
+        InvocationEndpoint: ${self:custom.mailchimp.endpoint}/lists/${self:custom.mailchimp.list}/segments/*/members
+        HttpMethod: POST
+        InvocationRateLimitPerSecond: 20
+    
+    ApiDestinationDeliveryRule:
+      Type: AWS::Events::Rule
+      Properties:
+        EventBusName: !Ref EventBus
+        Name: SendOrderEventsToApiDestinations
+        EventPattern:
+          detail-type:
+            - ORDER_COURSE_SERVERLESS
+            - ORDER_COURSE_DATALAKE
+        State: "ENABLED"
+        Targets:
+          - Id: MailchimpApiDestination
+            Arn: !GetAtt MailchimpApiDestination.Arn
+            RoleArn: !GetAtt ApiDestinationsTargetRole.Arn
+            DeadLetterConfig:
+              Arn: !GetAtt DeadLetterQueue.Arn
+            InputTransformer:
+              InputPathsMap:
+                mcTagId: $.detail.mcTagId
+                email: $.detail.email
+              InputTemplate: >
+                {
+                  "email_address": <email>
+                }
+            HttpParameters:
+              PathParameterValues:
+                - $.detail.mcTagId
+
+          - Id: TestApiDestination
+            Arn: !GetAtt TestApiDestination.Arn
+            RoleArn: !GetAtt ApiDestinationsTargetRole.Arn
+            DeadLetterConfig:
+              Arn: !GetAtt DeadLetterQueue.Arn
+            InputTransformer:
+              InputPathsMap:
+                orderId: $.detail.orderId
+                mcTagId: $.detail.mcTagId
+                client: $.detail.client
+                email: $.detail.email
+                date: $.detail.date
+                paid: $.detail.paid
+                product: $.detail.product
+              InputTemplate: >
+                {
+                  "orderId": <orderId>,
+                  "mcTagId": <mcTagId>,
+                  "client": <client>,
+                  "email": <email>,
+                  "date": <date>,
+                  "paid": <paid>,
+                  "product": <product>
+                }
+            HttpParameters:
+              PathParameterValues:
+                - $.detail.mcTagId
+          
+    ApiDestinationsTargetRole: 
+      Type: AWS::IAM::Role
+      Properties:
+        RoleName: ${self:provider.stage}-${self:service}-eventbus-api-destinations
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: events.amazonaws.com
+              Action: 'sts:AssumeRole'
+        Policies:
+            - PolicyName: AllowApiDestinationsInvoke
+              PolicyDocument:
+                Version: '2012-10-17'
+                Statement:
+                  - Sid: InvokeApiDestination
+                    Effect: Allow
+                    Action:
+                      - events:InvokeApiDestination
+                    Resource:
+                      - !GetAtt TestApiDestination.Arn
+                      - !GetAtt MailchimpApiDestination.Arn
+    
+    DeadLetterQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:provider.stage}-${self:service}-eventbus-DLQ
+        Tags:
+          - Key: Application
+            Value: ${self:service}
+          - Key: Customer
+            Value: ${self:service}-${self:provider.stage}
+          - Key: Stage
+            Value: ${self:provider.stage}
+          - Key: StackName
+            Value: !Ref AWS::StackId
+
+    DeadLetterQueuePolicy:
+      Type: AWS::SQS::QueuePolicy
+      Properties: 
+        PolicyDocument:
+          Statement:
+            - Sid: OwnerStatement
+              Action: 
+                - "sqs:*"
+              Effect: Allow
+              Resource: !GetAtt DeadLetterQueue.Arn
+              Principal:  
+                AWS: 
+                  - !Sub ${AWS::AccountId}
+            - Sid: EventRuleDlqStatement
+              # https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-rule-dlq.html#eb-dlq-perms
+              Action: 
+                - sqs:SendMessage
+              Effect: Allow
+              Resource: !GetAtt DeadLetterQueue.Arn
+              Principal:  
+                Service: events.amazonaws.com
+              Condition:
+                ArnEquals:
+                  "aws:SourceArn": !GetAtt ApiDestinationDeliveryRule.Arn
+        Queues: 
+          - !Ref DeadLetterQueue

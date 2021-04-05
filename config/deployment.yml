@@ -1,0 +1,7 @@
+deployment:
+  myProfile:
+    dev: default
+    prod: default
+  myRegion:
+    dev: eu-west-2 # London
+    prod: eu-west-2 # London
