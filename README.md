@@ -1,4 +1,4 @@
-# Amazon EventBridge API Destinations with parametrized endpoint URL sample and Mailchimp integration.
+# Amazon EventBridge API Destinations with parametrized endpoint URL and Mailchimp integration example.
 Sample project to demonstrate how to use Event Bridge API Destinations to integrate with Mailchimp or any other endpoint on th Internet. This project shows how to use **HTTP Path Parameters** to trigger different endpoints based on message content.
 
 You can deploy this sample on your AWS account in just few minutes and play with it. Please follow instructions below.
