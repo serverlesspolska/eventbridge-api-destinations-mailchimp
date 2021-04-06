@@ -1,12 +1,16 @@
-# eventbridge-api-destinations-mailchimp
-Sample project to demonstrate how to use Event Bridge API Destinations to integrate with Mailchimp. This project also show how to use **HTTP Path Parameters** to trigger different endpoints based on message content.
+# Amazon EventBridge API Destinations with parametrized endpoint URL sample and Mailchimp integration.
+Sample project to demonstrate how to use Event Bridge API Destinations to integrate with Mailchimp or any other endpoint on th Internet. This project shows how to use **HTTP Path Parameters** to trigger different endpoints based on message content.
+
+You can deploy this sample on your AWS account in just few minutes and play with it. Please follow instructions below.
+
+## Technologies
+This project uses **Node.js** and **Serverless Framework** + **CloudFormation** (which is embedded inside Serverless Framework configuration file `serverless.yml`).
 
 ## Tutorial
-Read full article at dev.to website.
+Please read full article at dev.to website explaining contents of this example.
 
-# How to deploy this sample project?
+# How to deploy?
 ## Code preparation
-I have prepared a sample project using Serverless Framework, so you can deploy it on your AWS account and play with it.
 
 You need to clone this project, and install dependencies:
 ```
@@ -42,12 +46,16 @@ After successful deployment (can take few minutes) you can invoke a Lambda funct
 ```
 sls invoke -f sendOrderEvent -l
 ```
-As a result, you should see the new request on the `webhook.site` website. That means that API Destinations just called the endpoint responding to the new message on the *EventBus*.
+As a result, you should see the new request on the `webhook.site` website (your custom URL). That means that API Destinations just called the endpoint responding to the new message on the *EventBus*.
+
+### Sample
+Here is a sample request received by webhook.site.
+![Event displayed on WebHook website](documentation/webhook-event.png)
 
 ## Debuging
 Mailchimp `Target` is not configured with real IDs and passwords. Therefore each event sent to the EventBus will not be delivered to Mailchimp. 
 
-You can see failed events in Dead Letter Queue (DLQ) named `dev-eb-api-dest-sample-eventbus-DLQ` in deployment region.
+You can see failed events moved from `EventBus` to a Dead Letter Queue (DLQ) named `dev-eb-api-dest-sample-eventbus-DLQ` in your deployment region.
 
 # How can I remove this sample from my AWS Account?
 To remove this project, simply execute following command in project folder:
